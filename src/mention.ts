@@ -3,7 +3,7 @@ import type { Context } from 'grammy';
 import { getGroup, saveMessage, getThreadContext } from './db.js';
 import { LennyMcpClient, TokenExpiredError } from './lenny.js';
 import { buildSearchQueries, buildGroundedPrompt } from './avatar.js';
-import { generateResponse } from './claude.js';
+import { generateResponse, type Provider } from './llm.js';
 
 const mention = new Composer();
 
@@ -22,7 +22,7 @@ mention.on('message:text', async (ctx, next) => {
   const chatId = String(ctx.chat.id);
   const group = getGroup(chatId);
 
-  if (!group?.lenny_token || !group?.anthropic_key) {
+  if (!group?.lenny_token || !group?.llm_key || !group?.llm_provider) {
     await ctx.reply(
       'I\'m not set up yet. An admin needs to run /setup.',
       { reply_parameters: { message_id: ctx.message.message_id } },
@@ -88,7 +88,8 @@ mention.on('message:text', async (ctx, next) => {
     );
 
     const response = await generateResponse(
-      group.anthropic_key,
+      group.llm_key,
+      group.llm_provider as Provider,
       system,
       userMessage,
     );

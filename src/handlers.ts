@@ -1,16 +1,15 @@
 import { Composer } from 'grammy';
-import type { Context } from 'grammy';
 import {
   getGroup,
   upsertGroup,
   setGroupLennyToken,
-  setGroupAnthropicKey,
+  setGroupLlmKey,
   clearGroupKeys,
-  getGroupByAdmin,
-  getGroupPendingAnthropicKey,
+  getGroupPendingLlmKey,
 } from './db.js';
+import { detectProvider, providerName } from './llm.js';
 
-const pendingSetups = new Map<string, { chatId: string; chatName: string; step: 'lenny_token' | 'anthropic_key' }>();
+const pendingSetups = new Map<string, { chatId: string; chatName: string; step: 'lenny_token' | 'llm_key' }>();
 
 const handlers = new Composer();
 
@@ -48,10 +47,10 @@ handlers.command('setup', async (ctx, next) => {
 
 handlers.command('help', async (ctx) => {
   await ctx.reply(
-    'I\'m a student of Lenny Rachitsky\'s newsletter. ' +
+    'I\'m a student of Lenny Rachitsky\'s corpus. ' +
       'Mention me with a product, growth, or startup question and I\'ll share what Lenny has written about it.\n\n' +
       'Commands:\n' +
-      '/setup — Connect your Lenny\'s Data account (admin only)\n' +
+      '/setup — Connect your accounts (admin only)\n' +
       '/status — Check connection status\n' +
       '/reset — Disconnect and clear keys (admin only)',
   );
@@ -69,13 +68,14 @@ handlers.command('status', async (ctx, next) => {
   }
 
   const lennyOk = !!group.lenny_token;
-  const claudeOk = !!group.anthropic_key;
+  const llmOk = !!group.llm_key;
+  const provider = group.llm_provider ? providerName(group.llm_provider as 'anthropic' | 'openai' | 'gemini') : 'Not connected';
 
   await ctx.reply(
     `Status for this group:\n` +
       `Lenny's Data: ${lennyOk ? '✅ Connected' : '❌ Not connected'}\n` +
-      `Claude API: ${claudeOk ? '✅ Connected' : '❌ Not connected'}\n\n` +
-      (lennyOk && claudeOk ? 'Ready! Mention me with a question.' : 'Run /setup to complete configuration.'),
+      `LLM: ${llmOk ? `✅ ${provider}` : '❌ Not connected'}\n\n` +
+      (lennyOk && llmOk ? 'Ready! Mention me with a question.' : 'Run /setup to complete configuration.'),
   );
 });
 
@@ -100,21 +100,31 @@ handlers.on('message:text', async (ctx, next) => {
   const setup = pendingSetups.get(userId);
 
   if (!setup) {
-    const pendingGroup = getGroupPendingAnthropicKey(userId);
+    const pendingGroup = getGroupPendingLlmKey(userId);
     if (pendingGroup) {
       const key = ctx.message.text.trim();
-      if (!key.startsWith('sk-')) {
-        await ctx.reply('That doesn\'t look like an Anthropic API key. It should start with "sk-". Try again.');
+      const provider = detectProvider(key);
+
+      if (!provider) {
+        await ctx.reply(
+          'I couldn\'t detect your AI provider from that key.\n\n' +
+            'Supported providers:\n' +
+            '• Anthropic — key starts with sk-ant-\n' +
+            '• OpenAI — key starts with sk-\n' +
+            '• Google Gemini — key starts with AI\n\n' +
+            'Please paste a valid API key.',
+        );
         return;
       }
-      setGroupAnthropicKey(pendingGroup.chat_id, key);
+
+      setGroupLlmKey(pendingGroup.chat_id, key, provider);
 
       try {
         await ctx.deleteMessage();
       } catch { /* may not have permission */ }
 
       await ctx.reply(
-        `All set\\! The Lenny avatar is now active in *${escapeForTelegram(pendingGroup.chat_name ?? 'your group')}*\\.`,
+        `All set\\! Using *${escapeForTelegram(providerName(provider))}*\\. The Lenny avatar is now active in *${escapeForTelegram(pendingGroup.chat_name ?? 'your group')}*\\.`,
         { parse_mode: 'MarkdownV2' },
       );
 
@@ -149,8 +159,11 @@ handlers.on('message:text', async (ctx, next) => {
 
     await ctx.reply(
       'Got it\\! Token saved\\.\n\n' +
-        '*Step 2:* Paste your Anthropic API key\\.\n' +
-        'Get it from console\\.anthropic\\.com/settings/keys',
+        '*Step 2:* Paste your AI API key\\.\n\n' +
+        'Supported providers \\(auto\\-detected from key\\):\n' +
+        '• Anthropic \\— console\\.anthropic\\.com/settings/keys\n' +
+        '• OpenAI \\— platform\\.openai\\.com/api\\-keys\n' +
+        '• Google Gemini \\— aistudio\\.google\\.com/apikey',
       { parse_mode: 'MarkdownV2' },
     );
     return;
@@ -161,7 +174,7 @@ handlers.on('message:text', async (ctx, next) => {
 
 handlers.on('message:new_chat_members:me', async (ctx) => {
   await ctx.reply(
-    'Hi! I\'m a student of Lenny Rachitsky\'s newsletter. ' +
+    'Hi! I\'m a student of Lenny Rachitsky\'s corpus. ' +
       'Mention me with product questions and I\'ll share what Lenny has written about it.\n\n' +
       'An admin needs to run /setup to connect me.',
   );

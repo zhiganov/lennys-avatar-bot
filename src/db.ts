@@ -41,7 +41,8 @@ export interface GroupRow {
   chat_name: string | null;
   admin_user_id: string;
   lenny_token: string | null;
-  anthropic_key: string | null;
+  llm_key: string | null;
+  llm_provider: string | null;
   created_at: string;
 }
 
@@ -60,7 +61,8 @@ export function upsertGroup(
     chat_name: chatName,
     admin_user_id: adminUserId,
     lenny_token: existing?.lenny_token ?? null,
-    anthropic_key: existing?.anthropic_key ?? null,
+    llm_key: existing?.llm_key ?? null,
+    llm_provider: existing?.llm_provider ?? null,
     created_at: existing?.created_at ?? new Date().toISOString(),
   };
   save();
@@ -74,10 +76,11 @@ export function setGroupLennyToken(chatId: string, token: string): void {
   }
 }
 
-export function setGroupAnthropicKey(chatId: string, key: string): void {
+export function setGroupLlmKey(chatId: string, key: string, provider: string): void {
   const group = data.groups[chatId];
   if (group) {
-    group.anthropic_key = key;
+    group.llm_key = key;
+    group.llm_provider = provider;
     save();
   }
 }
@@ -86,7 +89,8 @@ export function clearGroupKeys(chatId: string): void {
   const group = data.groups[chatId];
   if (group) {
     group.lenny_token = null;
-    group.anthropic_key = null;
+    group.llm_key = null;
+    group.llm_provider = null;
     save();
   }
 }
@@ -97,9 +101,9 @@ export function getGroupByAdmin(adminUserId: string): GroupRow | undefined {
   );
 }
 
-export function getGroupPendingAnthropicKey(adminUserId: string): GroupRow | undefined {
+export function getGroupPendingLlmKey(adminUserId: string): GroupRow | undefined {
   return Object.values(data.groups).find(
-    (g) => g.admin_user_id === adminUserId && g.lenny_token && !g.anthropic_key,
+    (g) => g.admin_user_id === adminUserId && g.lenny_token && !g.llm_key,
   );
 }
 
