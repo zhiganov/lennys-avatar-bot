@@ -8,6 +8,7 @@ import {
   getGroupPendingLlmKey,
 } from './db.js';
 import { detectProvider, providerName } from './llm.js';
+import { track } from './analytics.js';
 
 const pendingSetups = new Map<string, { chatId: string; chatName: string; step: 'lenny_token' | 'llm_key' }>();
 
@@ -121,6 +122,7 @@ handlers.on('message:text', async (ctx, next) => {
       }
 
       setGroupLlmKey(pendingGroup.chat_id, key, provider);
+      track('setup_complete', pendingGroup.chat_id, { provider });
 
       try {
         await ctx.deleteMessage();

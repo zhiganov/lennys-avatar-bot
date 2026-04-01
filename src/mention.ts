@@ -4,6 +4,7 @@ import { getGroup, saveMessage, getThreadContext } from './db.js';
 import { LennyMcpClient, TokenExpiredError } from './lenny.js';
 import { buildSearchQueries, buildGroundedPrompt } from './avatar.js';
 import { generateResponse, type Provider } from './llm.js';
+import { track } from './analytics.js';
 
 const mention = new Composer();
 
@@ -140,12 +141,23 @@ mention.on('message:text', async (ctx, next) => {
       response,
       ctx.message.message_id,
     );
+
+    track('query', chatId, {
+      question: question.slice(0, 200),
+      provider: group.llm_provider,
+      search_results: searchResults.length,
+      excerpts: validExcerpts.length,
+      response_length: response.length,
+      is_reply: !!ctx.message.reply_to_message,
+    });
   } catch (err) {
     if (err instanceof TokenExpiredError) {
       await ctx.reply(
         'I can\'t search right now — the admin has been notified.',
         { reply_parameters: { message_id: ctx.message.message_id } },
       );
+
+      track('error', chatId, { error: 'token_expired' });
 
       try {
         await ctx.api.sendMessage(
@@ -159,7 +171,9 @@ mention.on('message:text', async (ctx, next) => {
       return;
     }
 
+    const errorMsg = err instanceof Error ? err.message : String(err);
     console.error('Error handling mention:', err);
+    track('error', chatId, { error: errorMsg, question: question.slice(0, 200) });
     await ctx.reply(
       'Something went wrong generating a response. Please try again.',
       { reply_parameters: { message_id: ctx.message.message_id } },

@@ -2,10 +2,12 @@ import { createServer } from 'node:http';
 import { Bot, webhookCallback } from 'grammy';
 import { config } from './config.js';
 import { initDb } from './db.js';
+import { initAnalytics, shutdownAnalytics } from './analytics.js';
 import handlers from './handlers.js';
 import mention from './mention.js';
 
 initDb();
+initAnalytics();
 
 const bot = new Bot(config.botToken);
 

@@ -3,6 +3,8 @@ export const config = {
   databasePath: process.env.DATABASE_PATH || 'data/bot.db',
   port: parseInt(process.env.PORT || '3000', 10),
   webhookUrl: process.env.WEBHOOK_URL || '',
+  posthogKey: process.env.POSTHOG_API_KEY || '',
+  posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
 };
 
 function requireEnv(name: string): string {
