@@ -1,7 +1,7 @@
 {
   "name": "lennys-avatar-bot",
   "version": "0.1.0",
-  "description": "Telegram bot — a student of Lenny Rachitsky's newsletter",
+  "description": "Student of Lenny's Corpus — a Telegram bot grounded in Lenny Rachitsky's newsletter",
   "private": true,
   "type": "module",
   "scripts": {

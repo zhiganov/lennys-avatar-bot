@@ -1,6 +1,6 @@
-# Lenny Avatar Bot
+# Student of Lenny's Corpus
 
-A Telegram bot that answers product, growth, and startup questions using Lenny Rachitsky's newsletter archive. Built on the [Avatar SDK](https://github.com/harmonicabot/avatar-sdk) — the bot is a "student" of Lenny's writing, not Lenny himself.
+A Telegram bot that answers product, growth, and startup questions using Lenny Rachitsky's newsletter archive. Built on the [Avatar SDK](https://github.com/harmonicabot/avatar-sdk) — the bot is a "student" of Lenny's corpus, not Lenny himself.
 
 ## Add to Your Group
 
