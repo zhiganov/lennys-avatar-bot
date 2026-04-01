@@ -14,6 +14,14 @@ const pendingSetups = new Map<string, { chatId: string; chatName: string; step: 
 
 const handlers = new Composer();
 
+handlers.command('start', async (ctx) => {
+  if (ctx.chat?.type !== 'private') return;
+  await ctx.reply(
+    'Hi! I\'m a student of Lenny Rachitsky\'s corpus.\n\n' +
+      'Add me to a group and run /setup to get started.',
+  );
+});
+
 handlers.command('setup', async (ctx, next) => {
   if (ctx.chat?.type === 'private') return next();
 
