@@ -32,14 +32,8 @@ export interface Passage {
   filename?: string;
 }
 
-function titleToUrl(title: string): string {
-  const slug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-  return `https://www.lennysnewsletter.com/p/${slug}`;
+function titleToSearchUrl(title: string): string {
+  return `https://www.lennysnewsletter.com/search?q=${encodeURIComponent(title)}`;
 }
 
 export function buildGroundedPrompt(
@@ -48,7 +42,7 @@ export function buildGroundedPrompt(
   threadContext: MessageRow[],
 ): { system: string; userMessage: string } {
   const passageBlock = passages
-    .map((p, i) => `[${i + 1}] "${p.title}" (${p.year}) — ${titleToUrl(p.title)}\n${p.content}`)
+    .map((p, i) => `[${i + 1}] "${p.title}" (${p.year}) — ${titleToSearchUrl(p.title)}\n${p.content}`)
     .join('\n\n');
 
   const system = passages.length > 0
