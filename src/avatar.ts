@@ -1,4 +1,3 @@
-import type { SearchResult, ExcerptResult } from './lenny.js';
 import type { MessageRow } from './db.js';
 
 const SYSTEM_PROMPT = `You represent the documented perspectives and frameworks from Lenny Rachitsky's newsletter, based on published posts from 2019-2025. You are a student of his writing, not Lenny himself.
@@ -18,71 +17,28 @@ Citation style: Reference the specific post title naturally in your response, e.
 Format your response for Telegram:
 - Use *bold* for emphasis (Telegram MarkdownV2 uses single asterisks)
 - Keep it concise: 200-400 words max
-- End with a sources section. Each source MUST include a link. Format as:
+- End with a sources section:
 📚 Sources:
-• Post title (year) — URL
-• Post title (year) — URL
+• Post title (year)
+• Post title (year)`;
 
-The URLs for each source are provided alongside the passages below. Always include them.`;
-
-export function buildSearchQueries(question: string): string[] {
-  const queries: string[] = [];
-  queries.push(question);
-
-  const keywords = question
-    .replace(/[?!.,]/g, '')
-    .split(/\s+/)
-    .filter((w) => w.length > 3 && !['what', 'how', 'when', 'does', 'should', 'would', 'could', 'about', 'like', 'that', 'this', 'with', 'from', 'have', 'been', 'they', 'their', 'there', 'your'].includes(w.toLowerCase()))
-    .slice(0, 5)
-    .join('|');
-
-  if (keywords && keywords !== question) {
-    queries.push(keywords);
-  }
-
-  return queries;
-}
-
-function filenameToUrl(filename: string): string {
-  // newsletters/what-is-good-retention.md → https://www.lennysnewsletter.com/p/what-is-good-retention
-  // podcasts/ada-chen-rekhi.md → https://www.lennyspodcast.com/ada-chen-rekhi (approximation)
-  const slug = filename.replace(/^(newsletters|podcasts)\//, '').replace(/\.md$/, '');
-  if (filename.startsWith('podcasts/')) {
-    return `https://www.lennyspodcast.com/${slug}`;
-  }
-  return `https://www.lennysnewsletter.com/p/${slug}`;
+export interface Passage {
+  content: string;
+  title: string;
+  year: number;
+  filename?: string;
 }
 
 export function buildGroundedPrompt(
   question: string,
-  searchResults: SearchResult[],
-  excerpts: ExcerptResult[],
+  passages: Passage[],
   threadContext: MessageRow[],
 ): { system: string; userMessage: string } {
-  // Build a map of filename → URL for citation
-  const urlMap = new Map<string, string>();
-  for (const r of searchResults) {
-    urlMap.set(r.filename, filenameToUrl(r.filename));
-  }
+  const passageBlock = passages
+    .map((p, i) => `[${i + 1}] "${p.title}" (${p.year})\n${p.content}`)
+    .join('\n\n');
 
-  let passageBlock: string;
-
-  if (excerpts.length > 0) {
-    passageBlock = excerpts
-      .map((e, i) => {
-        const url = urlMap.get(e.filename) ?? '';
-        return `[${i + 1}] "${e.title}" — ${url}\n${e.excerpt}`;
-      })
-      .join('\n\n');
-  } else if (searchResults.length > 0) {
-    passageBlock = searchResults
-      .map((r, i) => `[${i + 1}] "${r.title}" (${r.date}) — ${filenameToUrl(r.filename)}\n${r.snippet || '(no snippet available)'}`)
-      .join('\n\n');
-  } else {
-    passageBlock = '';
-  }
-
-  const system = searchResults.length > 0
+  const system = passages.length > 0
     ? `${SYSTEM_PROMPT}\n\n--- Retrieved passages from Lenny's newsletter ---\n\n${passageBlock}\n\n--- End of retrieved passages ---`
     : `${SYSTEM_PROMPT}\n\nNo relevant passages were found in Lenny's newsletter for this query. Acknowledge this honestly — don't make up content.`;
 

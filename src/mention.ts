@@ -1,8 +1,8 @@
 import { Composer } from 'grammy';
-import type { Context } from 'grammy';
 import { getGroup, saveMessage, getThreadContext } from './db.js';
 import { LennyMcpClient, TokenExpiredError } from './lenny.js';
-import { buildSearchQueries, buildGroundedPrompt } from './avatar.js';
+import { vectorSearch, type VectorResult } from './vector-search.js';
+import { buildGroundedPrompt } from './avatar.js';
 import { generateResponse, type Provider } from './llm.js';
 import { track } from './analytics.js';
 
@@ -13,12 +13,8 @@ mention.on('message:text', async (ctx, next) => {
 
   const botUsername = ctx.me.username;
   const text = ctx.message.text;
-  const isReplyToBot =
-    ctx.message.reply_to_message?.from?.id === ctx.me.id;
-  const isMention =
-    text.includes(`@${botUsername}`);
-
-  console.log(`[mention] chat=${ctx.chat.id} text="${text.slice(0, 50)}" isMention=${isMention} isReply=${isReplyToBot} botUsername=${botUsername}`);
+  const isReplyToBot = ctx.message.reply_to_message?.from?.id === ctx.me.id;
+  const isMention = text.includes(`@${botUsername}`);
 
   if (!isMention && !isReplyToBot) return next();
 
@@ -42,85 +38,61 @@ mention.on('message:text', async (ctx, next) => {
     return;
   }
 
-  saveMessage(
-    chatId,
-    ctx.message.message_id,
-    'user',
-    question,
-    ctx.message.reply_to_message?.message_id ?? null,
-  );
-
+  saveMessage(chatId, ctx.message.message_id, 'user', question, ctx.message.reply_to_message?.message_id ?? null);
   await ctx.replyWithChatAction('typing');
 
   try {
+    // Primary: vector search (semantic)
+    const vectorResults = await vectorSearch(question, 5, 0.3);
+
+    // Secondary: if vector search found good results, use Lenny's MCP to read full posts
+    // for the top hits. If vector search failed, fall back to MCP text search.
     const lennyClient = new LennyMcpClient(group.lenny_token);
-    const queries = buildSearchQueries(question);
+    let passages: Array<{ content: string; title: string; year: number; filename?: string }> = [];
 
-    const allResults = await Promise.all(
-      queries.map((q) => lennyClient.searchContent(q, '', 5)),
-    );
+    if (vectorResults.length > 0) {
+      // Deduplicate by title (multiple chunks from same post)
+      const seenTitles = new Set<string>();
+      const uniqueResults: VectorResult[] = [];
+      for (const r of vectorResults) {
+        if (!seenTitles.has(r.title)) {
+          seenTitles.add(r.title);
+          uniqueResults.push(r);
+        }
+      }
 
-    const seen = new Set<string>();
-    const searchResults = allResults
-      .flat()
-      .filter((r) => {
-        if (seen.has(r.filename)) return false;
-        seen.add(r.filename);
-        return true;
-      })
-      .slice(0, 8);
-
-    // Use short keywords for excerpt search (full questions return no matches)
-    const excerptQuery = question
-      .replace(/[?!.,]/g, '')
-      .split(/\s+/)
-      .filter((w) => w.length > 3)
-      .slice(0, 3)
-      .join(' ');
-
-    // Try excerpts first, fall back to full content for top results
-    const top = searchResults.slice(0, 3);
-    const excerpts = await Promise.all(
-      top.map((r) =>
-        lennyClient.readExcerpt(r.filename, excerptQuery || question, 0, 500).catch(() => null),
-      ),
-    );
-    const validExcerpts = excerpts.filter(
-      (e): e is NonNullable<typeof e> => e !== null,
-    );
-
-    // If excerpts failed, read full content of top results
-    if (validExcerpts.length === 0 && top.length > 0) {
-      const fullContents = await Promise.all(
-        top.map((r) =>
-          lennyClient.readContent(r.filename).catch(() => null),
-        ),
-      );
-      for (let i = 0; i < top.length; i++) {
-        if (fullContents[i]) {
-          validExcerpts.push({
-            excerpt: fullContents[i]!,
-            filename: top[i].filename,
-            title: top[i].title,
-          });
+      // Use vector chunks as passages directly — they're already the relevant excerpts
+      passages = uniqueResults.slice(0, 5).map((r) => ({
+        content: r.content,
+        title: r.title,
+        year: r.year,
+      }));
+    } else {
+      // Fallback: Lenny's MCP text search
+      const results = await lennyClient.searchContent(question, '', 5).catch(() => []);
+      if (results.length > 0) {
+        const top = results.slice(0, 3);
+        const fullContents = await Promise.all(
+          top.map((r) => lennyClient.readContent(r.filename).catch(() => null)),
+        );
+        for (let i = 0; i < top.length; i++) {
+          if (fullContents[i]) {
+            passages.push({
+              content: fullContents[i]!.slice(0, 4000),
+              title: top[i].title,
+              year: parseInt(top[i].date?.slice(0, 4) ?? '2023'),
+              filename: top[i].filename,
+            });
+          }
         }
       }
     }
-
-    console.log(`[mention] searchResults=${searchResults.length} excerpts=${validExcerpts.length}`);
-    console.log(`[mention] excerpt titles:`, validExcerpts.map(e => e.title).join(', '));
-    console.log(`[mention] first excerpt preview:`, validExcerpts[0]?.excerpt?.slice(0, 200));
 
     const thread = ctx.message.reply_to_message
       ? getThreadContext(chatId, ctx.message.reply_to_message.message_id)
       : [];
 
-    const { system, userMessage } = buildGroundedPrompt(
-      question,
-      searchResults,
-      validExcerpts,
-      thread,
-    );
+    const { system, userMessage } = buildGroundedPrompt(question, passages, thread);
 
     const response = await generateResponse(
       group.llm_key,
@@ -134,20 +106,15 @@ mention.on('message:text', async (ctx, next) => {
       parse_mode: 'Markdown',
     });
 
-    saveMessage(
-      chatId,
-      sent.message_id,
-      'assistant',
-      response,
-      ctx.message.message_id,
-    );
+    saveMessage(chatId, sent.message_id, 'assistant', response, ctx.message.message_id);
 
     track('query', chatId, {
       question: question.slice(0, 200),
       provider: group.llm_provider,
-      search_results: searchResults.length,
-      excerpts: validExcerpts.length,
+      vector_results: vectorResults.length,
+      passages: passages.length,
       response_length: response.length,
+      retrieval: vectorResults.length > 0 ? 'vector' : 'mcp_fallback',
       is_reply: !!ctx.message.reply_to_message,
     });
   } catch (err) {
@@ -156,9 +123,7 @@ mention.on('message:text', async (ctx, next) => {
         'I can\'t search right now — the admin has been notified.',
         { reply_parameters: { message_id: ctx.message.message_id } },
       );
-
       track('error', chatId, { error: 'token_expired' });
-
       try {
         await ctx.api.sendMessage(
           Number(group.admin_user_id),
@@ -167,7 +132,6 @@ mention.on('message:text', async (ctx, next) => {
           { parse_mode: 'MarkdownV2' },
         );
       } catch { /* DM may fail */ }
-
       return;
     }
 
