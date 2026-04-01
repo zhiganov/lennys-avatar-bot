@@ -118,11 +118,15 @@ export class LennyMcpClient {
       name: 'search_content',
       arguments: { query, content_type: contentType, limit },
     });
+    console.log('[lenny] searchContent raw response:', JSON.stringify(response).slice(0, 500));
     const text = this.extractToolResultText(response);
+    console.log('[lenny] searchContent extracted text:', text.slice(0, 300));
     if (!text) return [];
     try {
       const parsed = JSON.parse(text);
-      return parsed.results ?? parsed ?? [];
+      const results = parsed.results ?? parsed ?? [];
+      console.log('[lenny] searchContent results count:', results.length);
+      return results;
     } catch {
       return [];
     }
@@ -142,7 +146,12 @@ export class LennyMcpClient {
     const text = this.extractToolResultText(response);
     if (!text) return null;
     try {
-      return JSON.parse(text) as ExcerptResult;
+      const parsed = JSON.parse(text);
+      // MCP returns error field when no excerpts match
+      if (parsed.error || parsed.total_excerpts === 0) {
+        return null;
+      }
+      return parsed as ExcerptResult;
     } catch {
       return null;
     }

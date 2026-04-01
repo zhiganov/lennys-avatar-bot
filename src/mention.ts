@@ -17,6 +17,8 @@ mention.on('message:text', async (ctx, next) => {
   const isMention =
     text.includes(`@${botUsername}`);
 
+  console.log(`[mention] chat=${ctx.chat.id} text="${text.slice(0, 50)}" isMention=${isMention} isReply=${isReplyToBot} botUsername=${botUsername}`);
+
   if (!isMention && !isReplyToBot) return next();
 
   const chatId = String(ctx.chat.id);
@@ -67,14 +69,29 @@ mention.on('message:text', async (ctx, next) => {
       })
       .slice(0, 8);
 
+    // Use short keywords for excerpt search (full questions return no matches)
+    const excerptQuery = question
+      .replace(/[?!.,]/g, '')
+      .split(/\s+/)
+      .filter((w) => w.length > 3)
+      .slice(0, 3)
+      .join(' ');
+
     const excerpts = await Promise.all(
       searchResults.slice(0, 5).map((r) =>
-        lennyClient.readExcerpt(r.filename, question, 0, 500).catch(() => null),
+        lennyClient.readExcerpt(r.filename, excerptQuery || question, 0, 500).catch((err) => {
+          console.error(`[mention] readExcerpt failed for ${r.filename}:`, err);
+          return null;
+        }),
       ),
     );
     const validExcerpts = excerpts.filter(
       (e): e is NonNullable<typeof e> => e !== null,
     );
+
+    console.log(`[mention] searchResults=${searchResults.length} excerpts=${validExcerpts.length}`);
+    console.log(`[mention] excerpt titles:`, validExcerpts.map(e => e.title).join(', '));
+    console.log(`[mention] first excerpt preview:`, validExcerpts[0]?.excerpt?.slice(0, 200));
 
     const thread = ctx.message.reply_to_message
       ? getThreadContext(chatId, ctx.message.reply_to_message.message_id)

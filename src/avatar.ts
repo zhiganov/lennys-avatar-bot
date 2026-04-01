@@ -47,9 +47,21 @@ export function buildGroundedPrompt(
   excerpts: ExcerptResult[],
   threadContext: MessageRow[],
 ): { system: string; userMessage: string } {
-  const passageBlock = excerpts
-    .map((e, i) => `[${i + 1}] "${e.title}"\n${e.excerpt}`)
-    .join('\n\n');
+  let passageBlock: string;
+
+  if (excerpts.length > 0) {
+    // Use full excerpts when available
+    passageBlock = excerpts
+      .map((e, i) => `[${i + 1}] "${e.title}"\n${e.excerpt}`)
+      .join('\n\n');
+  } else if (searchResults.length > 0) {
+    // Fall back to search result snippets
+    passageBlock = searchResults
+      .map((r, i) => `[${i + 1}] "${r.title}" (${r.date})\n${r.snippet || '(no snippet available)'}`)
+      .join('\n\n');
+  } else {
+    passageBlock = '';
+  }
 
   const system = searchResults.length > 0
     ? `${SYSTEM_PROMPT}\n\n--- Retrieved passages from Lenny's newsletter ---\n\n${passageBlock}\n\n--- End of retrieved passages ---`

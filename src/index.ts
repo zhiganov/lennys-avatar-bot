@@ -12,8 +12,8 @@ const bot = new Bot(config.botToken);
 bot.use(handlers);
 bot.use(mention);
 
-bot.catch((err: { message: string }) => {
-  console.error('Bot error:', err.message);
+bot.catch((err) => {
+  console.error('Bot error:', err);
 });
 
 async function start() {
