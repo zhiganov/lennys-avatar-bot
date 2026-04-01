@@ -56,7 +56,7 @@ mention.on('message:text', async (ctx, next) => {
     const queries = buildSearchQueries(question);
 
     const allResults = await Promise.all(
-      queries.map((q) => lennyClient.searchContent(q, 'newsletter', 5)),
+      queries.map((q) => lennyClient.searchContent(q, '', 5)),
     );
 
     const seen = new Set<string>();

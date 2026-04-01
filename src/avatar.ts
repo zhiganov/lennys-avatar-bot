@@ -18,10 +18,12 @@ Citation style: Reference the specific post title naturally in your response, e.
 Format your response for Telegram:
 - Use *bold* for emphasis (Telegram MarkdownV2 uses single asterisks)
 - Keep it concise: 200-400 words max
-- End with a sources section formatted as:
+- End with a sources section. Each source MUST include a link. Format as:
 📚 Sources:
-• Post title (year)
-• Post title (year)`;
+• Post title (year) — URL
+• Post title (year) — URL
+
+The URLs for each source are provided alongside the passages below. Always include them.`;
 
 export function buildSearchQueries(question: string): string[] {
   const queries: string[] = [];
@@ -41,23 +43,40 @@ export function buildSearchQueries(question: string): string[] {
   return queries;
 }
 
+function filenameToUrl(filename: string): string {
+  // newsletters/what-is-good-retention.md → https://www.lennysnewsletter.com/p/what-is-good-retention
+  // podcasts/ada-chen-rekhi.md → https://www.lennyspodcast.com/ada-chen-rekhi (approximation)
+  const slug = filename.replace(/^(newsletters|podcasts)\//, '').replace(/\.md$/, '');
+  if (filename.startsWith('podcasts/')) {
+    return `https://www.lennyspodcast.com/${slug}`;
+  }
+  return `https://www.lennysnewsletter.com/p/${slug}`;
+}
+
 export function buildGroundedPrompt(
   question: string,
   searchResults: SearchResult[],
   excerpts: ExcerptResult[],
   threadContext: MessageRow[],
 ): { system: string; userMessage: string } {
+  // Build a map of filename → URL for citation
+  const urlMap = new Map<string, string>();
+  for (const r of searchResults) {
+    urlMap.set(r.filename, filenameToUrl(r.filename));
+  }
+
   let passageBlock: string;
 
   if (excerpts.length > 0) {
-    // Use full excerpts when available
     passageBlock = excerpts
-      .map((e, i) => `[${i + 1}] "${e.title}"\n${e.excerpt}`)
+      .map((e, i) => {
+        const url = urlMap.get(e.filename) ?? '';
+        return `[${i + 1}] "${e.title}" — ${url}\n${e.excerpt}`;
+      })
       .join('\n\n');
   } else if (searchResults.length > 0) {
-    // Fall back to search result snippets
     passageBlock = searchResults
-      .map((r, i) => `[${i + 1}] "${r.title}" (${r.date})\n${r.snippet || '(no snippet available)'}`)
+      .map((r, i) => `[${i + 1}] "${r.title}" (${r.date}) — ${filenameToUrl(r.filename)}\n${r.snippet || '(no snippet available)'}`)
       .join('\n\n');
   } else {
     passageBlock = '';
