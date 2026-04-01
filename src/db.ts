@@ -5,12 +5,19 @@ import { config } from './config.js';
 // Simple JSON-file database — no native deps, works everywhere.
 // Data is tiny: group configs + recent message cache.
 
+export interface PendingSetup {
+  chatId: string;
+  chatName: string;
+  step: 'lenny_token' | 'llm_key';
+}
+
 interface DbData {
   groups: Record<string, GroupRow>;
   messages: MessageRow[];
+  pendingSetups: Record<string, PendingSetup>;
 }
 
-let data: DbData = { groups: {}, messages: [] };
+let data: DbData = { groups: {}, messages: [], pendingSetups: {} };
 
 const MAX_MESSAGES = 1000; // Keep last N messages to prevent unbounded growth
 
@@ -23,9 +30,10 @@ export function initDb(): void {
   if (existsSync(config.databasePath)) {
     try {
       const raw = readFileSync(config.databasePath, 'utf-8');
-      data = JSON.parse(raw) as DbData;
+      const parsed = JSON.parse(raw);
+      data = { groups: {}, messages: [], pendingSetups: {}, ...parsed };
     } catch {
-      data = { groups: {}, messages: [] };
+      data = { groups: {}, messages: [], pendingSetups: {} };
     }
   }
 }
@@ -105,6 +113,22 @@ export function getGroupPendingLlmKey(adminUserId: string): GroupRow | undefined
   return Object.values(data.groups).find(
     (g) => g.admin_user_id === adminUserId && g.lenny_token && !g.llm_key,
   );
+}
+
+// ─── Pending Setups (persisted across restarts) ─────────────────────
+
+export function getPendingSetup(userId: string): PendingSetup | undefined {
+  return data.pendingSetups[userId];
+}
+
+export function setPendingSetup(userId: string, setup: PendingSetup): void {
+  data.pendingSetups[userId] = setup;
+  save();
+}
+
+export function clearPendingSetup(userId: string): void {
+  delete data.pendingSetups[userId];
+  save();
 }
 
 // ─── Messages (thread context) ──────────────────────────────────────

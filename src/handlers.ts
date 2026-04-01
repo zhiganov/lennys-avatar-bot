@@ -6,11 +6,12 @@ import {
   setGroupLlmKey,
   clearGroupKeys,
   getGroupPendingLlmKey,
+  getPendingSetup,
+  setPendingSetup,
+  clearPendingSetup,
 } from './db.js';
 import { detectProvider, providerName } from './llm.js';
 import { track } from './analytics.js';
-
-const pendingSetups = new Map<string, { chatId: string; chatName: string; step: 'lenny_token' | 'llm_key' }>();
 
 const handlers = new Composer();
 
@@ -36,7 +37,7 @@ handlers.command('setup', async (ctx, next) => {
   }
 
   upsertGroup(chatId, chatName, userId);
-  pendingSetups.set(userId, { chatId, chatName, step: 'lenny_token' });
+  setPendingSetup(userId, { chatId, chatName, step: 'lenny_token' });
 
   try {
     await ctx.api.sendMessage(
@@ -109,7 +110,7 @@ handlers.on('message:text', async (ctx, next) => {
   if (ctx.chat?.type !== 'private') return next();
 
   const userId = String(ctx.from?.id);
-  const setup = pendingSetups.get(userId);
+  const setup = getPendingSetup(userId);
 
   if (!setup) {
     const pendingGroup = getGroupPendingLlmKey(userId);
@@ -163,12 +164,11 @@ handlers.on('message:text', async (ctx, next) => {
     }
 
     setGroupLennyToken(setup.chatId, token);
+    clearPendingSetup(userId);
 
     try {
       await ctx.deleteMessage();
     } catch { /* may not have permission */ }
-
-    pendingSetups.delete(userId);
 
     await ctx.reply(
       'Got it\\! Token saved\\.\n\n' +
