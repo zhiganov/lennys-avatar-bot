@@ -12,7 +12,7 @@ export function detectProvider(apiKey: string): Provider | null {
 export function providerName(provider: Provider): string {
   switch (provider) {
     case 'anthropic': return 'Anthropic (Claude)';
-    case 'openai': return 'OpenAI (GPT-4o)';
+    case 'openai': return 'OpenAI (GPT-4.1)';
     case 'gemini': return 'Google (Gemini)';
   }
 }
@@ -53,7 +53,7 @@ async function generateOpenAI(apiKey: string, system: string, userMessage: strin
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
+      model: 'gpt-4.1',
       max_tokens: 1024,
       messages: [
         { role: 'system', content: system },
