@@ -43,7 +43,7 @@ mention.on('message:text', async (ctx, next) => {
 
   try {
     // Primary: vector search (semantic)
-    const vectorResults = await vectorSearch(question, 5, 0.3);
+    const vectorResults = await vectorSearch(question, 8, 0.2);
 
     // Secondary: if vector search found good results, use Lenny's MCP to read full posts
     // for the top hits. If vector search failed, fall back to MCP text search.
