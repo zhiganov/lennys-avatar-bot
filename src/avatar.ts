@@ -18,10 +18,12 @@ Citation style: Reference the specific post title naturally in your response, e.
 Format your response for Telegram:
 - Use *bold* for emphasis (Telegram MarkdownV2 uses single asterisks)
 - Keep it concise: 200-400 words max
-- End with a sources section:
+- End with a sources section. Include the URL for each source:
 📚 Sources:
-• Post title (year)
-• Post title (year)`;
+• Post title (year) — URL
+• Post title (year) — URL
+
+The URL for each source is provided alongside the passages below.`;
 
 export interface Passage {
   content: string;
@@ -30,13 +32,23 @@ export interface Passage {
   filename?: string;
 }
 
+function titleToUrl(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return `https://www.lennysnewsletter.com/p/${slug}`;
+}
+
 export function buildGroundedPrompt(
   question: string,
   passages: Passage[],
   threadContext: MessageRow[],
 ): { system: string; userMessage: string } {
   const passageBlock = passages
-    .map((p, i) => `[${i + 1}] "${p.title}" (${p.year})\n${p.content}`)
+    .map((p, i) => `[${i + 1}] "${p.title}" (${p.year}) — ${titleToUrl(p.title)}\n${p.content}`)
     .join('\n\n');
 
   const system = passages.length > 0
