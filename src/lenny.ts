@@ -156,6 +156,18 @@ export class LennyMcpClient {
       return null;
     }
   }
+
+  async readContent(filename: string): Promise<string | null> {
+    await this.ensureInitialized();
+    const response = await this.sendRequest('tools/call', {
+      name: 'read_content',
+      arguments: { filename },
+    });
+    const text = this.extractToolResultText(response);
+    if (!text) return null;
+    // Truncate to ~4000 chars to avoid blowing up the LLM context
+    return text.slice(0, 4000);
+  }
 }
 
 /**

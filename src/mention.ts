@@ -77,17 +77,34 @@ mention.on('message:text', async (ctx, next) => {
       .slice(0, 3)
       .join(' ');
 
+    // Try excerpts first, fall back to full content for top results
+    const top = searchResults.slice(0, 3);
     const excerpts = await Promise.all(
-      searchResults.slice(0, 5).map((r) =>
-        lennyClient.readExcerpt(r.filename, excerptQuery || question, 0, 500).catch((err) => {
-          console.error(`[mention] readExcerpt failed for ${r.filename}:`, err);
-          return null;
-        }),
+      top.map((r) =>
+        lennyClient.readExcerpt(r.filename, excerptQuery || question, 0, 500).catch(() => null),
       ),
     );
     const validExcerpts = excerpts.filter(
       (e): e is NonNullable<typeof e> => e !== null,
     );
+
+    // If excerpts failed, read full content of top results
+    if (validExcerpts.length === 0 && top.length > 0) {
+      const fullContents = await Promise.all(
+        top.map((r) =>
+          lennyClient.readContent(r.filename).catch(() => null),
+        ),
+      );
+      for (let i = 0; i < top.length; i++) {
+        if (fullContents[i]) {
+          validExcerpts.push({
+            excerpt: fullContents[i]!,
+            filename: top[i].filename,
+            title: top[i].title,
+          });
+        }
+      }
+    }
 
     console.log(`[mention] searchResults=${searchResults.length} excerpts=${validExcerpts.length}`);
     console.log(`[mention] excerpt titles:`, validExcerpts.map(e => e.title).join(', '));
