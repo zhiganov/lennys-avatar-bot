@@ -32,9 +32,12 @@ handlers.command('setup', async (ctx, next) => {
   try {
     await ctx.api.sendMessage(
       ctx.from!.id,
-      `Let's set up the Lenny avatar for *${escapeForTelegram(chatName)}*\\.\n\n` +
+      `Hi\\! I'm setting up *Student of Lenny's Corpus* for *${escapeForTelegram(chatName)}*\\.\n\n` +
+        `I need two things to get started:\n` +
+        `1\\. Your Lenny's Data token \\(to search the newsletter archive\\)\n` +
+        `2\\. An AI API key \\(Anthropic, OpenAI, or Gemini — to generate responses\\)\n\n` +
         `*Step 1:* Paste your Lenny's Data MCP token\\.\n` +
-        `Get it from lennysdata\\.com/access/mcp \\(Cursor tab → Reveal token\\)`,
+        `Go to lennysdata\\.com/access/mcp → Cursor tab → Reveal token → Copy`,
       { parse_mode: 'MarkdownV2' },
     );
     await ctx.reply('Check your DMs — I sent you setup instructions.');
