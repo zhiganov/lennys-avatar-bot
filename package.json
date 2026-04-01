@@ -1,5 +1,5 @@
 {
-  "name": "lenny-avatar-bot",
+  "name": "lennys-avatar-bot",
   "version": "0.1.0",
   "description": "Telegram bot — a student of Lenny Rachitsky's newsletter",
   "private": true,
@@ -10,12 +10,10 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
-    "grammy": "^1.30.0",
-    "better-sqlite3": "^11.0.0",
-    "@anthropic-ai/sdk": "^0.39.0"
+    "@anthropic-ai/sdk": "^0.39.0",
+    "grammy": "^1.30.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.0",
     "tsx": "^4.19.0",
     "typescript": "^5.5.0"
   },

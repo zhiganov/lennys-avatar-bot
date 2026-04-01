@@ -1,9 +1,18 @@
-import Database from 'better-sqlite3';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { config } from './config.js';
 
-let db: Database.Database;
+// Simple JSON-file database — no native deps, works everywhere.
+// Data is tiny: group configs + recent message cache.
+
+interface DbData {
+  groups: Record<string, GroupRow>;
+  messages: MessageRow[];
+}
+
+let data: DbData = { groups: {}, messages: [] };
+
+const MAX_MESSAGES = 1000; // Keep last N messages to prevent unbounded growth
 
 export function initDb(): void {
   const dir = dirname(config.databasePath);
@@ -11,38 +20,21 @@ export function initDb(): void {
     mkdirSync(dir, { recursive: true });
   }
 
-  db = new Database(config.databasePath);
-  db.pragma('journal_mode = WAL');
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS groups (
-      chat_id TEXT PRIMARY KEY,
-      chat_name TEXT,
-      admin_user_id TEXT NOT NULL,
-      lenny_token TEXT,
-      anthropic_key TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      chat_id TEXT NOT NULL,
-      message_id INTEGER NOT NULL,
-      role TEXT NOT NULL,
-      content TEXT NOT NULL,
-      reply_to_message_id INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_messages_reply
-      ON messages(chat_id, reply_to_message_id);
-  `);
+  if (existsSync(config.databasePath)) {
+    try {
+      const raw = readFileSync(config.databasePath, 'utf-8');
+      data = JSON.parse(raw) as DbData;
+    } catch {
+      data = { groups: {}, messages: [] };
+    }
+  }
 }
 
-function getDb(): Database.Database {
-  if (!db) throw new Error('Database not initialized — call initDb() first');
-  return db;
+function save(): void {
+  writeFileSync(config.databasePath, JSON.stringify(data, null, 2));
 }
+
+// ─── Groups ──────────────────────────────────────────────────────────
 
 export interface GroupRow {
   chat_id: string;
@@ -54,9 +46,7 @@ export interface GroupRow {
 }
 
 export function getGroup(chatId: string): GroupRow | undefined {
-  return getDb()
-    .prepare('SELECT * FROM groups WHERE chat_id = ?')
-    .get(chatId) as GroupRow | undefined;
+  return data.groups[chatId];
 }
 
 export function upsertGroup(
@@ -64,54 +54,56 @@ export function upsertGroup(
   chatName: string | null,
   adminUserId: string,
 ): void {
-  getDb()
-    .prepare(
-      `INSERT INTO groups (chat_id, chat_name, admin_user_id)
-       VALUES (?, ?, ?)
-       ON CONFLICT(chat_id) DO UPDATE SET
-         chat_name = excluded.chat_name,
-         admin_user_id = excluded.admin_user_id`,
-    )
-    .run(chatId, chatName, adminUserId);
+  const existing = data.groups[chatId];
+  data.groups[chatId] = {
+    chat_id: chatId,
+    chat_name: chatName,
+    admin_user_id: adminUserId,
+    lenny_token: existing?.lenny_token ?? null,
+    anthropic_key: existing?.anthropic_key ?? null,
+    created_at: existing?.created_at ?? new Date().toISOString(),
+  };
+  save();
 }
 
 export function setGroupLennyToken(chatId: string, token: string): void {
-  getDb()
-    .prepare('UPDATE groups SET lenny_token = ? WHERE chat_id = ?')
-    .run(token, chatId);
+  const group = data.groups[chatId];
+  if (group) {
+    group.lenny_token = token;
+    save();
+  }
 }
 
 export function setGroupAnthropicKey(chatId: string, key: string): void {
-  getDb()
-    .prepare('UPDATE groups SET anthropic_key = ? WHERE chat_id = ?')
-    .run(key, chatId);
+  const group = data.groups[chatId];
+  if (group) {
+    group.anthropic_key = key;
+    save();
+  }
 }
 
 export function clearGroupKeys(chatId: string): void {
-  getDb()
-    .prepare('UPDATE groups SET lenny_token = NULL, anthropic_key = NULL WHERE chat_id = ?')
-    .run(chatId);
+  const group = data.groups[chatId];
+  if (group) {
+    group.lenny_token = null;
+    group.anthropic_key = null;
+    save();
+  }
 }
 
 export function getGroupByAdmin(adminUserId: string): GroupRow | undefined {
-  return getDb()
-    .prepare(
-      `SELECT * FROM groups
-       WHERE admin_user_id = ? AND lenny_token IS NULL
-       ORDER BY created_at DESC LIMIT 1`,
-    )
-    .get(adminUserId) as GroupRow | undefined;
+  return Object.values(data.groups).find(
+    (g) => g.admin_user_id === adminUserId && !g.lenny_token,
+  );
 }
 
 export function getGroupPendingAnthropicKey(adminUserId: string): GroupRow | undefined {
-  return getDb()
-    .prepare(
-      `SELECT * FROM groups
-       WHERE admin_user_id = ? AND lenny_token IS NOT NULL AND anthropic_key IS NULL
-       ORDER BY created_at DESC LIMIT 1`,
-    )
-    .get(adminUserId) as GroupRow | undefined;
+  return Object.values(data.groups).find(
+    (g) => g.admin_user_id === adminUserId && g.lenny_token && !g.anthropic_key,
+  );
 }
+
+// ─── Messages (thread context) ──────────────────────────────────────
 
 export interface MessageRow {
   id: number;
@@ -123,6 +115,8 @@ export interface MessageRow {
   created_at: string;
 }
 
+let nextMessageId = 1;
+
 export function saveMessage(
   chatId: string,
   messageId: number,
@@ -130,12 +124,22 @@ export function saveMessage(
   content: string,
   replyToMessageId: number | null,
 ): void {
-  getDb()
-    .prepare(
-      `INSERT INTO messages (chat_id, message_id, role, content, reply_to_message_id)
-       VALUES (?, ?, ?, ?, ?)`,
-    )
-    .run(chatId, messageId, role, content, replyToMessageId);
+  data.messages.push({
+    id: nextMessageId++,
+    chat_id: chatId,
+    message_id: messageId,
+    role,
+    content,
+    reply_to_message_id: replyToMessageId,
+    created_at: new Date().toISOString(),
+  });
+
+  // Trim old messages
+  if (data.messages.length > MAX_MESSAGES) {
+    data.messages = data.messages.slice(-MAX_MESSAGES);
+  }
+
+  save();
 }
 
 export function getThreadContext(
@@ -147,10 +151,9 @@ export function getThreadContext(
   let currentId: number | null = messageId;
 
   while (currentId && thread.length < maxDepth) {
-    const msg = getDb()
-      .prepare('SELECT * FROM messages WHERE chat_id = ? AND message_id = ?')
-      .get(chatId, currentId) as MessageRow | undefined;
-
+    const msg = data.messages.find(
+      (m) => m.chat_id === chatId && m.message_id === currentId,
+    );
     if (!msg) break;
     thread.unshift(msg);
     currentId = msg.reply_to_message_id;

@@ -43,8 +43,8 @@ The bot never stores or redistributes Lenny's content — each group connects th
 ## Self-Hosting
 
 ```bash
-git clone https://github.com/harmonicabot/lenny-avatar-bot.git
-cd lenny-avatar-bot
+git clone https://github.com/harmonicabot/lennys-avatar-bot.git
+cd lennys-avatar-bot
 npm install
 cp .env.example .env
 # Fill in BOT_TOKEN from @BotFather
