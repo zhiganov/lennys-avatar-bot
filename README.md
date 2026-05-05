@@ -1,4 +1,4 @@
-# Student of Lenny's Corpus
+# Student of Lenny's
 
 A Telegram avatar that answers product, growth, and startup questions grounded in Lenny Rachitsky's newsletter archive. Add it to your team's group chat and get cited, practical advice from 349 newsletter posts — without leaving Telegram.
 
